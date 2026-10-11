@@ -17,25 +17,29 @@
 // SPDX-License-Identifier: GPL-3.0
 
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define OMICRON_VERSION "0.1.0"
 
+// ENUMS
 typedef enum {
 	OMICRON_KEYWORD,
 	OMICRON_TYPE,
 	OMICRON_NUMBER,
-	OMICRON_TIME,
+	OMICRON_COLON,
 	OMICRON_IDENTIFIER,
-	OMICRON_L_BRACKET,
-	OMICRON_R_BRACKET,
+	OMICRON_L_RBRACKET,
+	OMICRON_R_RBRACKET,
 	OMICRON_STR_BEGIN,
 	OMICRON_STR_END,
 } Omicron_Token_Type;
 
+// STRUCTERS
 typedef struct {
-	int row;
 	int col;
+	int row;
 } Omicron_Code_Location;
 
 typedef struct {
@@ -45,99 +49,145 @@ typedef struct {
 } Omicron_Token;
 
 typedef struct {
-	const char* id;
-	const char* desc;
-	void (*exec)(int, char**);
-} Omicron_Flag;
+	Omicron_Token* tokens;
+	size_t length;
+	size_t capacity;
+} Omicron_Token_Stack;
 
-static void omicron_print_help(int, char**);
-static void omicron_print_version(int, char**);
-static void omicron_set_output_file(int, char**);
-static void omicron_run(int, char**);
-static int omicron_max_flag_len(void);
-static Omicron_Token* omicron_lexer_process();
 
-static *char omicron_output_file = "out.cron";
+// FUNCTIONS
+static Omicron_Token_Stack* omicron_lexer_process(const char*);
+static bool omicron_init_stack(Omicron_Token_Stack*);
+static bool omicron_push_back_stack(Omicron_Token_Stack*, Omicron_Token);
+static bool omicron_pop_back_stack(Omicron_Token_Stack*);
+static void omicron_free_stack(Omicron_Token_Stack*);
+static bool omicron_is_digit(char ch);
+static bool omicron_is_alpha(char ch);
 
-static const Omicron_Flag FLAG_HELP =    { .id = "help", .desc = "Display this information", .exec = omicron_print_help };
-static const Omicron_Flag FLAG_VERSION = { .id = "version", .desc = "Display compiler version information", .exec = omicron_print_version };
-static const Omicron_Flag FLAG_OUT =     { .id = "o", .desc = "Place the output into <file>.", .exec = NULL };
-
-static const Omicron_Flag* CMD_FLAGS[] = {
-	&FLAG_HELP,
-	&FLAG_VERSION,
-	&FLAG_OUT,
-	NULL,
+// CONSTANTS
+const static char* omicron_output_file = "out.cron";
+const static char* omicron_keywords[8] = {
+	"func", "end",
+	"every", "at", "in", "on", "from", "through",
 };
 
-static void omicron_print_version(int argc, char** argv) {
-	printf("Omicrion %s a programming language that compiles into cron\n", OMICRON_VERSION);
-	printf("Copyright (C) 2026 bloop");
-	exit(0);
+static bool omicron_init_stack(Omicron_Token_Stack* stack) {}
+static bool omicron_push_back_stack(Omicron_Token_Stack* stack, Omicron_Token token) {
+	char* to_str[9] = {
+    	"OMICRON_KEYWORD",
+		"OMICRON_TYPE",
+		"OMICRON_NUMBER",
+		"OMICRON_COLON",
+		"OMICRON_IDENTIFIER",
+		"OMICRON_L_RBRACKET",
+		"OMICRON_R_RBRACKET",
+		"OMICRON_STR_BEGIN",
+		"OMICRON_STR_END",
+	};
+	printf(" %s{%s},", to_str[token.type], token.content);
+}
+static bool omicron_pop_back_stack(Omicron_Token_Stack* stack) {}
+static void omicron_free_stack(Omicron_Token_Stack*) {}
+
+static bool omicron_is_digit(char ch) {
+	return '0' <= ch || ch >= '9';
+}
+static bool omicron_is_alpha(char ch) {
+	return 'a' <= ch || ch >= 'z';
 }
 
-static void omicron_print_help(int argc, char** argv) {
-	printf("Usage: omc [options] file...\n\n");
+static Omicron_Token_Stack* omicron_lexer_process(const char* code) {
 	
-	int max_len = omicron_max_flag_len();
-	int padding = 15;
+	Omicron_Token_Stack* stack = {0};
+	omicron_init_stack(stack);
 
-	int i = 0;
-	while (1) {
-		const Omicron_Flag *flag = CMD_FLAGS[i];
-		if (flag == NULL) break;
-		
-		int flag_len = strlen(flag->id);
-		int desc_len = strlen(flag->desc);
+	int row = 0;
+	int col = 0;	
+	printf("{ ");
+	while (*code != '\0') {
+	
+		switch(*code) {
+			case ' ':
+			case '\r':
+			case '\t':
+				break;
+			case '\n':
+				row++;
+				col = 0;
+				break;
 
-		if (flag_len > 1) {
-			printf("  --%s", flag->id);
-			printf("%*s\n",  ((max_len - flag_len) + desc_len + padding), flag->desc);
-		} else {
-			printf("  -%s",  flag->id);
-			printf("%*s\n",  ((max_len - flag_len) + desc_len + padding + 1), flag->desc);
+			case '(':
+				omicron_push_back_stack(stack, (Omicron_Token){
+					.content = "(",
+					.type = OMICRON_L_RBRACKET,
+					.loc  = (Omicron_Code_Location){.col = col, .row = row },
+				});
+				break;
+			case ')':
+				omicron_push_back_stack(stack, (Omicron_Token){
+					.content = "(",
+					.type = OMICRON_R_RBRACKET,
+					.loc  = (Omicron_Code_Location){.col = col, .row = row },
+				});
+				break;
+			case ':':
+				omicron_push_back_stack(stack, (Omicron_Token){
+					.content = ":",
+					.type = OMICRON_COLON,
+					.loc  = (Omicron_Code_Location){.col = col, .row = row },
+				});
+				break;
+
+	
+			default:
+				if (omicron_is_alpha(*code) || *code == '_') {
+					char word[256]; //TODO
+					word[0] = *code;
+					int current = 1;
+					while (*(code + 1) != '\0') {
+						if (omicron_is_alpha(*(code + 1)) || *(code + 1) == '_') {
+							word[current] = *(code++);
+							current++;
+						}
+						else break;	
+					}
+	
+					omicron_push_back_stack(stack, (Omicron_Token){
+						.content = word,
+						.type = OMICRON_IDENTIFIER,
+						.loc  = (Omicron_Code_Location){.col = col, .row = row },
+					});
+				}
+
+				if (omicron_is_digit(*code)) {
+					char digit[256]; // TODO
+					digit[0] = *code;
+
+					int current = 1;
+					while (*(code + 1) != '\0') {
+						if (omicron_is_digit(*(code + 1))) {
+							digit[current] = *(code++);
+							current++;
+						}
+						else break;	
+					}
+					omicron_push_back_stack(stack, (Omicron_Token){
+						.content = digit,
+						.type = OMICRON_NUMBER,
+						.loc  = (Omicron_Code_Location){.col = col, .row = row },
+					});
+				}
+				break;
 		}
-		++i;
-	}
-	exit(0);
-}
-
-static int omicron_max_flag_len() {
-	int max = 0;
-
-	int i = 0;
-	while(1) {	
-		if (CMD_FLAGS[i] == NULL) break;
-		if (strlen(CMD_FLAGS[i]->id) > max) 
-			max = strlen(CMD_FLAGS[i]->id);
-		++i;
-	}
-
-	return max;
-}
-
-static void omicron_set_output_file(int argc, char** argv) {
-	int output_file_index = 0;
-
-	for (int i = 0; i < argc; ++i) {
-		if (argv[i]) == "-o" output_file_index = i + 1;
+		++col;
+		++code;
 	}
 	
-	if (output_file_index >= argc) {
-		fprintf(stderr, "syntax error, use: -o <file>");
-		exit(1);
-	}
-	omicron_output_file = argv[output_file_index]; 
-}
-
-static void omicron_run(int argc, char** argv) {
-	for (int i = 0; i < argc; ++i) {
-	}
+	printf(" }\n");
+	return stack;
 }
 
 int main(int argc, char** argv) {
-	
-	omicron_run(argc, argv);	
-
+	omicron_lexer_process("every saturday at 18:00");
 	return 0;
 }
