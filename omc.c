@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #define OMICRON_VERSION "0.1.0"
 
@@ -61,12 +62,10 @@ static bool omicron_init_stack(Omicron_Token_Stack*);
 static bool omicron_push_back_stack(Omicron_Token_Stack*, Omicron_Token);
 static bool omicron_pop_back_stack(Omicron_Token_Stack*);
 static void omicron_free_stack(Omicron_Token_Stack*);
-static bool omicron_is_digit(char ch);
-static bool omicron_is_alpha(char ch);
 
 // CONSTANTS
-const static char* omicron_output_file = "out.cron";
-const static char* omicron_keywords[8] = {
+static const char* omicron_output_file = "out.cron";
+static const char* omicron_keywords[8] = {
 	"func", "end",
 	"every", "at", "in", "on", "from", "through",
 };
@@ -88,13 +87,6 @@ static bool omicron_push_back_stack(Omicron_Token_Stack* stack, Omicron_Token to
 }
 static bool omicron_pop_back_stack(Omicron_Token_Stack* stack) {}
 static void omicron_free_stack(Omicron_Token_Stack*) {}
-
-static bool omicron_is_digit(char ch) {
-	return '0' <= ch || ch >= '9';
-}
-static bool omicron_is_alpha(char ch) {
-	return 'a' <= ch || ch >= 'z';
-}
 
 static Omicron_Token_Stack* omicron_lexer_process(const char* code) {
 	
@@ -125,7 +117,7 @@ static Omicron_Token_Stack* omicron_lexer_process(const char* code) {
 				break;
 			case ')':
 				omicron_push_back_stack(stack, (Omicron_Token){
-					.content = "(",
+					.content = ")",
 					.type = OMICRON_R_RBRACKET,
 					.loc  = (Omicron_Code_Location){.col = col, .row = row },
 				});
@@ -140,42 +132,55 @@ static Omicron_Token_Stack* omicron_lexer_process(const char* code) {
 
 	
 			default:
-				if (omicron_is_alpha(*code) || *code == '_') {
+				if (isalpha(*code) || *code == '_') {
 					char word[256]; //TODO
 					word[0] = *code;
 					int current = 1;
 					while (*(code + 1) != '\0') {
-						if (omicron_is_alpha(*(code + 1)) || *(code + 1) == '_') {
-							word[current] = *(code++);
+						if (isalpha(*(code + 1)) || *(code + 1) == '_') {
+							word[current] = *(++code);
 							current++;
 						}
 						else break;	
 					}
-	
+					word[current] = '\0';	
 					omicron_push_back_stack(stack, (Omicron_Token){
-						.content = word,
+						.content = strdup(word),
 						.type = OMICRON_IDENTIFIER,
 						.loc  = (Omicron_Code_Location){.col = col, .row = row },
 					});
+
+					for (int i = 0; i < current; ++i) {
+						word[i] = '\0';
+					}
+					break;
 				}
 
-				if (omicron_is_digit(*code)) {
+				if (isdigit(*code)) {
 					char digit[256]; // TODO
 					digit[0] = *code;
 
 					int current = 1;
 					while (*(code + 1) != '\0') {
-						if (omicron_is_digit(*(code + 1))) {
-							digit[current] = *(code++);
+						if (isdigit(*(code + 1))) {
+							digit[current] = *(++code);
 							current++;
 						}
 						else break;	
 					}
+					digit[current] = '\0';
+
 					omicron_push_back_stack(stack, (Omicron_Token){
-						.content = digit,
+						.content = strdup(digit),
 						.type = OMICRON_NUMBER,
 						.loc  = (Omicron_Code_Location){.col = col, .row = row },
 					});
+
+					for (int i = 0; i < current; ++i) {
+						digit[i] = '\0';
+					}
+
+					break;
 				}
 				break;
 		}
@@ -188,6 +193,6 @@ static Omicron_Token_Stack* omicron_lexer_process(const char* code) {
 }
 
 int main(int argc, char** argv) {
-	omicron_lexer_process("every saturday at 18:00");
+	omicron_lexer_process("every mondaydd at 18:00 sh(goto nahui)");
 	return 0;
 }
