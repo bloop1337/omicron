@@ -1,5 +1,5 @@
-# Omicron - a programming language, that compiles into cron.
-This repository contains the source code of the compiler and its documentation.
+# Omicron - a scheduling DSL, that compiles into crontab entries.
+This repository contains the compiler source code and documentation.
 
 ### Code example
 ```omicron
