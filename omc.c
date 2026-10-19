@@ -22,6 +22,10 @@
 #include <string.h>
 #include <ctype.h>
 
+
+#define DYNSTR_IMPLEMENTATION
+#include "./thirdparty/dynstr.h/dynstr.h"
+
 #define OMICRON_VERSION "0.1.0"
 
 // ENUMS
@@ -33,8 +37,7 @@ typedef enum {
 	OMICRON_IDENTIFIER,
 	OMICRON_L_RBRACKET,
 	OMICRON_R_RBRACKET,
-	OMICRON_STR_BEGIN,
-	OMICRON_STR_END,
+	OMICRON_STR,
 } Omicron_Token_Type;
 
 // STRUCTERS
@@ -44,7 +47,7 @@ typedef struct {
 } Omicron_Code_Location;
 
 typedef struct {
-	const char* content;
+	Dynamic_String content;
 	const Omicron_Token_Type type;
 	const Omicron_Code_Location loc;
 } Omicron_Token;
@@ -80,13 +83,18 @@ static bool omicron_push_back_stack(Omicron_Token_Stack* stack, Omicron_Token to
 		"OMICRON_IDENTIFIER",
 		"OMICRON_L_RBRACKET",
 		"OMICRON_R_RBRACKET",
-		"OMICRON_STR_BEGIN",
-		"OMICRON_STR_END",
+		"OMICRON_STR",
 	};
-	printf(" %s{%s},", to_str[token.type], token.content);
+	printf(" %s{\""DYNSTR_FORMAT"\"},", to_str[token.type], token.content.length, token.content.data);
 }
 static bool omicron_pop_back_stack(Omicron_Token_Stack* stack) {}
 static void omicron_free_stack(Omicron_Token_Stack*) {}
+
+static int omicron_find_char(const char* str, const char ch	) {
+	int result = -1;
+	for (size_t i = 0; i < strlen(str); ++i) if (str[i] == ch) return i;
+	return result;
+}
 
 static Omicron_Token_Stack* omicron_lexer_process(const char* code) {
 	
@@ -110,79 +118,88 @@ static Omicron_Token_Stack* omicron_lexer_process(const char* code) {
 
 			case '(':
 				omicron_push_back_stack(stack, (Omicron_Token){
-					.content = "(",
+					.content = dynstr("("),
 					.type = OMICRON_L_RBRACKET,
 					.loc  = (Omicron_Code_Location){.col = col, .row = row },
 				});
 				break;
 			case ')':
 				omicron_push_back_stack(stack, (Omicron_Token){
-					.content = ")",
+					.content = dynstr(")"),
 					.type = OMICRON_R_RBRACKET,
 					.loc  = (Omicron_Code_Location){.col = col, .row = row },
 				});
 				break;
 			case ':':
 				omicron_push_back_stack(stack, (Omicron_Token){
-					.content = ":",
+					.content = dynstr(":"),
 					.type = OMICRON_COLON,
 					.loc  = (Omicron_Code_Location){.col = col, .row = row },
 				});
 				break;
-
 	
 			default:
 				if (isalpha(*code) || *code == '_') {
-					char word[256]; //TODO
-					word[0] = *code;
-					int current = 1;
+					Dynamic_String s;
+					dynstr_create_len(&s, 10);
+					dynstr_append(&s, *(code));
+
 					while (*(code + 1) != '\0') {
-						if (isalpha(*(code + 1)) || *(code + 1) == '_') {
-							word[current] = *(++code);
-							current++;
-						}
+						if (isalpha(*(code + 1)) || *(code + 1) == '_') dynstr_append(&s, *(++code));
 						else break;	
 					}
-					word[current] = '\0';	
+
 					omicron_push_back_stack(stack, (Omicron_Token){
-						.content = strdup(word),
+						.content = s,
 						.type = OMICRON_IDENTIFIER,
 						.loc  = (Omicron_Code_Location){.col = col, .row = row },
 					});
 
-					for (int i = 0; i < current; ++i) {
-						word[i] = '\0';
-					}
 					break;
 				}
 
 				if (isdigit(*code)) {
-					char digit[256]; // TODO
-					digit[0] = *code;
+					Dynamic_String s;
+					dynstr_create_len(&s, 5);
+					dynstr_append(&s, *(code));
 
-					int current = 1;
 					while (*(code + 1) != '\0') {
-						if (isdigit(*(code + 1))) {
-							digit[current] = *(++code);
-							current++;
-						}
+						if (isdigit(*(code + 1))) dynstr_append(&s, *(++code));
 						else break;	
 					}
-					digit[current] = '\0';
-
 					omicron_push_back_stack(stack, (Omicron_Token){
-						.content = strdup(digit),
+						.content = s,
 						.type = OMICRON_NUMBER,
 						.loc  = (Omicron_Code_Location){.col = col, .row = row },
 					});
+					break;
+				}
+				if (*code == '"') {
 
-					for (int i = 0; i < current; ++i) {
-						digit[i] = '\0';
+					int next = omicron_find_char((code+1), '"');
+					if (next == -1) {
+						printf("Next not found");	
+						exit(1);
+						break;
 					}
+					code++; //skip first "
+					Dynamic_String s;
+					dynstr_create_len(&s, 10);
+
+					for (int i = 0; i < next; ++i) {
+						dynstr_append(&s, *code);
+						code++;
+					}
+					
+					omicron_push_back_stack(stack, (Omicron_Token){
+						.content = s,
+						.type = OMICRON_STR,
+						.loc  = (Omicron_Code_Location){.col = col, .row = row },
+					});
 
 					break;
 				}
-				break;
+			break;
 		}
 		++col;
 		++code;
@@ -193,6 +210,6 @@ static Omicron_Token_Stack* omicron_lexer_process(const char* code) {
 }
 
 int main(int argc, char** argv) {
-	omicron_lexer_process("every mondaydd at 18:00 sh(goto nahui)");
+	omicron_lexer_process("every monday at 18:00 sh(\"goto nahui\")");
 	return 0;
 }
